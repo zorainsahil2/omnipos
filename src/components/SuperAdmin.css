@@ -282,6 +282,25 @@
 .revenue-row:last-child { border-bottom: none; }
 .revenue-row.total-row { font-size: 1rem; font-weight: 800; color: #818cf8; margin-top: 4px; }
 
+/* Add Store button */
+.admin-add-store-btn {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  border: none;
+  border-radius: 10px;
+  padding: 9px 18px;
+  color: white;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(99,102,241,0.3);
+}
+
+.admin-add-store-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(99,102,241,0.4);
+}
+
 /* Refresh button */
 .admin-refresh-btn {
   background: rgba(99,102,241,0.1);

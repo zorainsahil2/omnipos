@@ -36,7 +36,8 @@ function SuperAdminShell({ profile, signOut }) {
 function TenantShell({ user, profile, tenant, signOut }) {
   const [activeTab, setActiveTab] = useState('billing');
   const isSubscribed = tenant?.subscription_status === 'active';
-  const isMedical    = user?.user_metadata?.store_type === 'medical';
+  // store_type is set by Super Admin — always read from tenant record
+  const isMedical    = tenant?.store_type === 'medical';
 
   const tabs = [
     { key: 'billing',  label: '🧾 Billing' },

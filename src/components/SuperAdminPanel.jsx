@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
+import { CreateStoreModal } from './CreateStoreModal';
 import './SuperAdmin.css';
 
 /* ─── Payment gateway definitions ──────────────────────── */
@@ -40,8 +41,8 @@ const GATEWAYS = [
 
 /* ─── Single tenant row ─────────────────────────────────── */
 const TenantRow = ({ tenant, onToggle, onPriceSave }) => {
-  const [price, setPrice]     = useState(tenant.subscription_price ?? 0);
-  const [saving, setSaving]   = useState(false);
+  const [price, setPrice]   = useState(tenant.subscription_price ?? 0);
+  const [saving, setSaving] = useState(false);
   const isActive = tenant.subscription_status === 'active';
 
   const handleSavePrice = async () => {
@@ -57,14 +58,21 @@ const TenantRow = ({ tenant, onToggle, onPriceSave }) => {
         <div style={{ fontWeight: 700, color: '#f1f5f9' }}>{tenant.name}</div>
         <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
           {tenant.country} · {tenant.currency}
+          {tenant.tax_rate > 0 && (
+            <span style={{ marginLeft: '6px', color: '#475569' }}>
+              · {tenant.tax_name} {tenant.tax_rate}%
+            </span>
+          )}
         </div>
       </td>
 
       {/* Store type */}
       <td>
-        <span className={`badge ${tenant.store_type === 'medical' ? 'badge-purple' : 'badge-blue'}`}
-          style={{ fontSize: '0.72rem' }}>
-          {tenant.store_type || 'grocery'}
+        <span
+          className={`badge ${tenant.store_type === 'medical' ? 'badge-purple' : 'badge-blue'}`}
+          style={{ fontSize: '0.72rem' }}
+        >
+          {tenant.store_type === 'medical' ? '💊 Medical' : '🛒 Grocery'}
         </span>
       </td>
 
@@ -80,11 +88,7 @@ const TenantRow = ({ tenant, onToggle, onPriceSave }) => {
             value={price}
             onChange={e => setPrice(e.target.value)}
           />
-          <button
-            className="save-price-btn"
-            onClick={handleSavePrice}
-            disabled={saving}
-          >
+          <button className="save-price-btn" onClick={handleSavePrice} disabled={saving}>
             {saving ? '...' : 'Save'}
           </button>
         </div>
@@ -107,12 +111,12 @@ const TenantRow = ({ tenant, onToggle, onPriceSave }) => {
         </div>
       </td>
 
-      {/* Monthly revenue contribution */}
+      {/* Monthly revenue */}
       <td style={{ color: '#818cf8', fontWeight: 700 }}>
         {tenant.currency} {parseFloat(tenant.subscription_price || 0).toFixed(2)}
       </td>
 
-      {/* Joined date */}
+      {/* Joined */}
       <td style={{ color: '#64748b', fontSize: '0.8rem' }}>
         {new Date(tenant.created_at).toLocaleDateString()}
       </td>
@@ -122,15 +126,17 @@ const TenantRow = ({ tenant, onToggle, onPriceSave }) => {
 
 /* ─── Main SuperAdminPanel ──────────────────────────────── */
 export const SuperAdminPanel = () => {
-  const [tenants, setTenants]   = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [filterStatus, setFilter] = useState('all');
-  const [searchTerm, setSearch]   = useState('');
-  const [toast, setToast]         = useState('');
+  const [tenants, setTenants]       = useState([]);
+  const [loading, setLoading]       = useState(false);
+  const [showCreateModal, setModal] = useState(false);
+  const [filterStatus, setFilter]   = useState('all');
+  const [filterType, setFilterType] = useState('all');
+  const [searchTerm, setSearch]     = useState('');
+  const [toast, setToast]           = useState('');
 
   const showToast = (msg) => {
     setToast(msg);
-    setTimeout(() => setToast(''), 3000);
+    setTimeout(() => setToast(''), 3500);
   };
 
   /* ── Load all tenants ── */
@@ -163,7 +169,7 @@ export const SuperAdminPanel = () => {
     setTenants(prev =>
       prev.map(t => t.id === tenantId ? { ...t, subscription_status: newStatus } : t)
     );
-    showToast(`✅ Subscription ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully`);
+    showToast(`✅ Subscription ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
   };
 
   /* ── Update subscription price ── */
@@ -183,18 +189,21 @@ export const SuperAdminPanel = () => {
   const filteredTenants = useMemo(() => {
     return tenants.filter(t => {
       const matchStatus = filterStatus === 'all' || t.subscription_status === filterStatus;
+      const matchType   = filterType === 'all' || t.store_type === filterType;
       const q = searchTerm.toLowerCase();
       const matchSearch = !q || t.name?.toLowerCase().includes(q) || t.country?.toLowerCase().includes(q);
-      return matchStatus && matchSearch;
+      return matchStatus && matchType && matchSearch;
     });
-  }, [tenants, filterStatus, searchTerm]);
+  }, [tenants, filterStatus, filterType, searchTerm]);
 
   /* ── Summary stats ── */
   const stats = useMemo(() => {
     const active   = tenants.filter(t => t.subscription_status === 'active');
     const inactive = tenants.filter(t => t.subscription_status !== 'active');
+    const grocery  = tenants.filter(t => t.store_type === 'grocery');
+    const medical  = tenants.filter(t => t.store_type === 'medical');
     const mrr      = active.reduce((s, t) => s + (t.subscription_price || 0), 0);
-    return { total: tenants.length, active: active.length, inactive: inactive.length, mrr };
+    return { total: tenants.length, active: active.length, inactive: inactive.length, grocery: grocery.length, medical: medical.length, mrr };
   }, [tenants]);
 
   /* ── Revenue by country ── */
@@ -212,17 +221,24 @@ export const SuperAdminPanel = () => {
   return (
     <div className="admin-layout">
 
-      {/* Toast notification */}
+      {/* Toast */}
       {toast && (
         <div style={{
           position: 'fixed', top: '20px', right: '20px', zIndex: 999,
-          background: 'rgba(15,23,42,0.95)', border: '1px solid rgba(99,102,241,0.3)',
+          background: 'rgba(15,23,42,0.97)', border: '1px solid rgba(99,102,241,0.3)',
           padding: '12px 20px', borderRadius: '12px', color: '#e2e8f0',
           fontSize: '0.9rem', fontWeight: 600, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-          animation: 'slideIn 0.3s ease',
         }}>
           {toast}
         </div>
+      )}
+
+      {/* Create Store Modal */}
+      {showCreateModal && (
+        <CreateStoreModal
+          onClose={() => setModal(false)}
+          onStoreCreated={() => { loadTenants(); showToast('✅ New store added successfully!'); }}
+        />
       )}
 
       {/* Hero */}
@@ -230,12 +246,20 @@ export const SuperAdminPanel = () => {
         <div>
           <div className="admin-hero-title">🛡 Super Admin Control Panel</div>
           <div className="admin-hero-sub">
-            Manage all tenant subscriptions, billing prices, and payment gateway integrations.
+            Create and manage all stores, control subscriptions, and configure gateways.
           </div>
         </div>
-        <button className="admin-refresh-btn" onClick={loadTenants} disabled={loading}>
-          {loading ? '...' : '↻ Refresh'}
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            className="admin-add-store-btn"
+            onClick={() => setModal(true)}
+          >
+            ＋ Add New Store
+          </button>
+          <button className="admin-refresh-btn" onClick={loadTenants} disabled={loading}>
+            {loading ? '...' : '↻ Refresh'}
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -256,11 +280,19 @@ export const SuperAdminPanel = () => {
           <span className="admin-stat-lbl">Inactive</span>
         </div>
         <div className="admin-stat-card">
+          <span className="admin-stat-icon">🛒</span>
+          <span className="admin-stat-val" style={{ color: '#93c5fd' }}>{stats.grocery}</span>
+          <span className="admin-stat-lbl">Grocery Stores</span>
+        </div>
+        <div className="admin-stat-card">
+          <span className="admin-stat-icon">💊</span>
+          <span className="admin-stat-val" style={{ color: '#d8b4fe' }}>{stats.medical}</span>
+          <span className="admin-stat-lbl">Medical Stores</span>
+        </div>
+        <div className="admin-stat-card">
           <span className="admin-stat-icon">💰</span>
-          <span className="admin-stat-val" style={{ color: '#818cf8' }}>
-            {stats.mrr.toFixed(2)}
-          </span>
-          <span className="admin-stat-lbl">Monthly Revenue (Mixed Currencies)</span>
+          <span className="admin-stat-val" style={{ color: '#818cf8' }}>{stats.mrr.toFixed(0)}</span>
+          <span className="admin-stat-lbl">Est. MRR (mixed)</span>
         </div>
       </div>
 
@@ -271,22 +303,31 @@ export const SuperAdminPanel = () => {
         </div>
 
         {/* Filters */}
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <input
-            style={{ flex: 1, minWidth: '200px', background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '8px 14px', color: '#f8fafc', fontSize: '0.88rem' }}
+            style={{ flex: 1, minWidth: '180px', background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '8px 14px', color: '#f8fafc', fontSize: '0.88rem' }}
             type="text"
             placeholder="Search by store name or country..."
             value={searchTerm}
             onChange={e => setSearch(e.target.value)}
           />
           <select
-            style={{ background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '8px 14px', color: '#f8fafc', fontSize: '0.88rem' }}
+            style={{ background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '8px 12px', color: '#f8fafc', fontSize: '0.88rem' }}
             value={filterStatus}
             onChange={e => setFilter(e.target.value)}
           >
             <option value="all">All Statuses</option>
             <option value="active">Active Only</option>
             <option value="inactive">Inactive Only</option>
+          </select>
+          <select
+            style={{ background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '8px 12px', color: '#f8fafc', fontSize: '0.88rem' }}
+            value={filterType}
+            onChange={e => setFilterType(e.target.value)}
+          >
+            <option value="all">All Types</option>
+            <option value="grocery">🛒 Grocery</option>
+            <option value="medical">💊 Medical</option>
           </select>
         </div>
 
@@ -306,13 +347,16 @@ export const SuperAdminPanel = () => {
               {loading ? (
                 <tr>
                   <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#475569' }}>
-                    Loading tenants...
+                    Loading stores...
                   </td>
                 </tr>
               ) : filteredTenants.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#475569' }}>
-                    No stores found. Stores appear here once shopkeepers register.
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#475569' }}>
+                    {tenants.length === 0
+                      ? <span>No stores yet. Click <strong style={{ color: '#818cf8' }}>＋ Add New Store</strong> to create your first one.</span>
+                      : 'No stores match the current filters.'
+                    }
                   </td>
                 </tr>
               ) : (
@@ -351,9 +395,8 @@ export const SuperAdminPanel = () => {
           <span>💳</span> Payment Gateway Integration Plan
         </div>
         <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '20px', marginTop: '-8px' }}>
-          Integration stubs are ready. Connect each gateway via Supabase Edge Functions (webhook handlers) and environment variables.
+          Connect each gateway via Supabase Edge Functions and Vercel env variables.
         </p>
-
         <div className="gateway-grid">
           {GATEWAYS.map(gw => (
             <div key={gw.name} className="gateway-card">
@@ -366,43 +409,32 @@ export const SuperAdminPanel = () => {
                   {gw.status === 'stub' ? 'Ready to Integrate' : 'Active (Manual)'}
                 </span>
               </div>
-
               <div className="gateway-desc">{gw.desc}</div>
-
               {gw.docsUrl ? (
                 <a className="gateway-docs-link" href={gw.docsUrl} target="_blank" rel="noopener noreferrer">
                   📄 View Integration Docs →
                 </a>
               ) : (
                 <span style={{ fontSize: '0.8rem', color: '#4ade80' }}>
-                  ✓ No integration needed — toggle is built-in above
+                  ✓ Toggle is built-in above
                 </span>
-              )}
-
-              {/* Env variable guidance for devs */}
-              {gw.status === 'stub' && (
-                <div style={{ marginTop: '4px', background: 'rgba(15,23,42,0.6)', borderRadius: '8px', padding: '10px', fontFamily: 'monospace', fontSize: '0.72rem', color: '#64748b' }}>
-                  {gw.name === 'Stripe'   && 'VITE_STRIPE_PUBLIC_KEY=pk_live_...'}
-                  {gw.name === 'Razorpay' && 'VITE_RAZORPAY_KEY_ID=rzp_live_...'}
-                  {gw.name === 'HyperPay' && 'VITE_HYPERPAY_ENTITY_ID=...'}
-                </div>
               )}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Manual payment instructions */}
+      {/* Manual activation guide */}
       <div className="admin-section" style={{ background: 'rgba(34,197,94,0.04)', borderColor: 'rgba(34,197,94,0.1)' }}>
         <div className="admin-section-title" style={{ color: '#86efac' }}>
-          <span>📋</span> Manual Activation Workflow (Pakistan / India / Cash Markets)
+          <span>📋</span> Manual Activation (Pakistan / India / Cash Markets)
         </div>
         <ol style={{ color: '#94a3b8', fontSize: '0.88rem', lineHeight: '1.9', paddingLeft: '20px', margin: 0 }}>
-          <li>Shopkeeper makes cash / EasyPaisa / JazzCash / bank transfer payment.</li>
-          <li>Shopkeeper sends payment screenshot via WhatsApp / Email to you.</li>
-          <li>You verify the payment amount matches the store's subscription price above.</li>
-          <li>Toggle the store's subscription to <strong style={{ color: '#4ade80' }}>Active</strong> in the table above.</li>
-          <li>The shopkeeper's terminal is unlocked instantly — no code change needed.</li>
+          <li>Create the store above — set status to <strong>Inactive</strong> if payment is pending.</li>
+          <li>Shopkeeper makes payment (cash / EasyPaisa / JazzCash / bank transfer).</li>
+          <li>Shopkeeper sends payment proof (screenshot) to you.</li>
+          <li>Verify amount matches the store's monthly price.</li>
+          <li>Toggle the subscription to <strong style={{ color: '#4ade80' }}>Active</strong> — POS unlocks instantly.</li>
         </ol>
       </div>
 
