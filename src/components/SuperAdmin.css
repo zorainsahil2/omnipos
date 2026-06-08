@@ -1,0 +1,298 @@
+/* Super Admin Panel Styles */
+
+/* Admin root layout */
+.admin-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* Admin header section */
+.admin-hero {
+  background: linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(168,85,247,0.08) 100%);
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 20px;
+  padding: 28px 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.admin-hero-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  margin-bottom: 6px;
+}
+
+.admin-hero-sub {
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+
+/* Summary stat row */
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.admin-stat-card {
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-stat-icon { font-size: 1.5rem; }
+.admin-stat-val  { font-size: 1.8rem; font-weight: 800; color: #f1f5f9; }
+.admin-stat-lbl  { font-size: 0.78rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Section wrapper */
+.admin-section {
+  background: rgba(30, 41, 59, 0.3);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 18px;
+  padding: 24px;
+}
+
+.admin-section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Tenant table */
+.tenant-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.tenant-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.tenant-table th {
+  background: rgba(15,23,42,0.7);
+  padding: 13px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: #64748b;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  white-space: nowrap;
+}
+
+.tenant-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  color: #cbd5e1;
+  vertical-align: middle;
+}
+
+.tenant-table tr:hover td { background: rgba(255,255,255,0.02); }
+.tenant-table tr:last-child td { border-bottom: none; }
+
+/* Toggle switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: rgba(100,116,139,0.3);
+  border-radius: 34px;
+  transition: background 0.25s;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background: #94a3b8;
+  border-radius: 50%;
+  transition: transform 0.25s, background 0.25s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: rgba(34,197,94,0.25);
+  border-color: rgba(34,197,94,0.4);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+  background: #4ade80;
+}
+
+/* Inline price editor */
+.price-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.price-input {
+  width: 90px;
+  background: rgba(15,23,42,0.5);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: #f8fafc;
+  font-size: 0.85rem;
+  text-align: right;
+  transition: border-color 0.2s;
+}
+
+.price-input:focus { outline: none; border-color: #6366f1; }
+
+.save-price-btn {
+  background: rgba(99,102,241,0.15);
+  border: 1px solid rgba(99,102,241,0.25);
+  color: #818cf8;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.save-price-btn:hover { background: rgba(99,102,241,0.28); }
+
+/* Payment gateway cards */
+.gateway-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.gateway-card {
+  background: rgba(15,23,42,0.5);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.2s;
+}
+
+.gateway-card:hover { border-color: rgba(99,102,241,0.2); }
+
+.gateway-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.gateway-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.gateway-regions {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 3px;
+}
+
+.gateway-status-pill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.gateway-status-pill.stub {
+  background: rgba(245,158,11,0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(245,158,11,0.25);
+}
+
+.gateway-status-pill.manual {
+  background: rgba(34,197,94,0.12);
+  color: #86efac;
+  border: 1px solid rgba(34,197,94,0.2);
+}
+
+.gateway-desc {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.gateway-docs-link {
+  font-size: 0.8rem;
+  color: #818cf8;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gateway-docs-link:hover { color: #a5b4fc; }
+
+/* Subscription revenue summary */
+.revenue-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.revenue-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.87rem;
+  color: #94a3b8;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.revenue-row:last-child { border-bottom: none; }
+.revenue-row.total-row { font-size: 1rem; font-weight: 800; color: #818cf8; margin-top: 4px; }
+
+/* Refresh button */
+.admin-refresh-btn {
+  background: rgba(99,102,241,0.1);
+  border: 1px solid rgba(99,102,241,0.2);
+  color: #818cf8;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.admin-refresh-btn:hover { background: rgba(99,102,241,0.2); }
