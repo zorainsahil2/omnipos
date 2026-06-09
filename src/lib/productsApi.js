@@ -180,3 +180,140 @@ export async function softDeleteProduct(productId) {
   if (error) throw error;
   await localDb.products.delete(productId);
 }
+
+// ─── BULK IMPORT ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch all existing active SKUs for the current tenant.
+ * Used for duplicate detection before import.
+ */
+export async function fetchExistingSkus() {
+  const { data, error } = await supabase
+    .from('products')
+    .select('sku')
+    .eq('is_active', true);
+  if (error) throw error;
+  return new Set((data || []).map(p => p.sku).filter(Boolean));
+}
+
+/**
+ * Batch insert validated rows into:
+ *   1. products table
+ *   2. product_units table (base unit + price)
+ *   3. inventory_batches table (initial stock, if > 0)
+ *
+ * Processes in chunks of 50 to stay within Supabase limits.
+ * Calls onProgress({ inserted, total, failed }) after each chunk.
+ *
+ * @param {Array}    validRows    - validated row objects from csvValidator
+ * @param {string}   tenantId
+ * @param {Function} onProgress  - optional progress callback
+ * @returns {{ inserted: number, failed: Array }}
+ */
+export async function batchInsertProducts(validRows, tenantId, onProgress = null) {
+  const CHUNK_SIZE = 50;
+  const results    = { inserted: 0, failed: [] };
+  const today      = new Date().toISOString().split('T')[0];
+
+  for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+    const chunk = validRows.slice(i, i + CHUNK_SIZE);
+
+    // ── Build product records ──
+    const productRecords = chunk.map(r => ({
+      id:                   crypto.randomUUID(),
+      tenant_id:            tenantId,
+      name:                 r.data.name.trim(),
+      sku:                  r.data.sku?.trim() || null,
+      barcode:              r.data.barcode?.trim() || null,
+      brand:                r.data.brand?.trim() || null,
+      type:                 r.normType || 'grocery',
+      generic_name:         r.data.generic_name?.trim() || null,
+      manufacturer:         r.data.manufacturer?.trim() || null,
+      prescription_required: String(r.data.prescription_required).toLowerCase() === 'true',
+      reorder_level:        parseFloat(r.data.reorder_level) || 10,
+      is_active:            true,
+    }));
+
+    // ── Insert products ──
+    const { data: inserted, error: prodErr } = await supabase
+      .from('products')
+      .insert(productRecords)
+      .select('id');
+
+    if (prodErr) {
+      results.failed.push(
+        ...chunk.map((r, idx) => ({
+          rowNumber: r.rowNumber,
+          sku:       r.data.sku,
+          reason:    prodErr.message,
+        }))
+      );
+      onProgress?.({ inserted: results.inserted, total: validRows.length, failed: results.failed.length });
+      continue;
+    }
+
+    results.inserted += inserted.length;
+
+    // ── Build product_units records ──
+    const unitRecords = productRecords.map((prod, idx) => ({
+      id:                crypto.randomUUID(),
+      product_id:        prod.id,
+      unit_name:         chunk[idx].data.base_unit?.trim() || 'Piece',
+      is_base_unit:      true,
+      conversion_factor: 1.0,
+      price:             parseFloat(chunk[idx].data.selling_price) || 0,
+    }));
+
+    await supabase.from('product_units').insert(unitRecords);
+
+    // ── Build initial inventory_batches (only if stock > 0) ──
+    const batchRecords = productRecords
+      .map((prod, idx) => {
+        const qty = parseFloat(chunk[idx].data.current_stock);
+        if (!qty || qty <= 0) return null;
+        return {
+          id:            crypto.randomUUID(),
+          tenant_id:     tenantId,
+          product_id:    prod.id,
+          batch_number:  `IMPORT-${today}`,
+          purchase_cost: parseFloat(chunk[idx].data.purchase_price) || 0,
+          quantity:      qty,
+        };
+      })
+      .filter(Boolean);
+
+    if (batchRecords.length > 0) {
+      await supabase.from('inventory_batches').insert(batchRecords);
+    }
+
+    onProgress?.({ inserted: results.inserted, total: validRows.length, failed: results.failed.length });
+  }
+
+  return results;
+}
+
+/**
+ * Re-fetch all active products for the tenant and sync to Dexie IndexedDB.
+ * Called after bulk import to keep offline cache fresh.
+ */
+export async function syncImportedProductsToLocal(tenantId) {
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*, product_units(*)')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true);
+    if (error) return;
+
+    await localDb.products.clear();
+    await localDb.productUnits.clear();
+
+    for (const prod of (data || [])) {
+      const { product_units, ...info } = prod;
+      await localDb.products.put(info);
+      if (product_units?.length) await localDb.productUnits.bulkPut(product_units);
+    }
+  } catch (err) {
+    console.warn('[syncImportedProductsToLocal] Failed:', err.message);
+  }
+}

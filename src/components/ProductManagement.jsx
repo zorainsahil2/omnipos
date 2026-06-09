@@ -10,10 +10,12 @@ import {
   sortProducts,
   stockStatus,
 } from '../lib/productsApi';
+import { downloadCsvTemplate } from '../lib/csvTemplate';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAuth } from '../context/AuthContext';
 import { EditProductModal } from './EditProductModal';
+import { ImportProductsModal } from './ImportProductsModal';
 import './Inventory.css';
 
 // ─── constants ──────────────────────────────────────────────────────────────
@@ -149,6 +151,9 @@ export const ProductManagement = () => {
   const [filterOptions, setOpts]= useState({ brands: [] });
   const [loading, setLoading]   = useState(false);
   const [toast, setToast]       = useState('');
+
+  // ── Import modal state ──
+  const [showImport, setShowImport] = useState(false);
 
   // ── Edit / delete state ──
   const [editingProduct, setEditing] = useState(null);
@@ -335,16 +340,42 @@ export const ProductManagement = () => {
         />
       )}
 
+      {/* Import Modal */}
+      {showImport && (
+        <ImportProductsModal
+          tenantId={tenant?.id}
+          onClose={() => setShowImport(false)}
+          onImportComplete={loadProducts}
+        />
+      )}
+
       {/* ── Product List Card ────────────────────────────────────── */}
       <div className="inventory-card" style={{ gridColumn: '1 / -1' }}>
         <div className="card-title">
           <span>📦 Product Catalog</span>
-          <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>
-            {isOnline
-              ? <span className="badge badge-green">Online</span>
-              : <span className="badge badge-red">Offline</span>
-            }
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>
+              {isOnline
+                ? <span className="badge badge-green">Online</span>
+                : <span className="badge badge-red">Offline</span>
+              }
+            </span>
+            <button
+              className="pm-import-header-btn pm-download-btn"
+              onClick={downloadCsvTemplate}
+              title="Download CSV template"
+            >
+              ↓ Template
+            </button>
+            <button
+              className="pm-import-header-btn pm-import-btn"
+              onClick={() => setShowImport(true)}
+              disabled={!isOnline}
+              title={isOnline ? 'Bulk import products from CSV/XLSX' : 'Import requires internet connection'}
+            >
+              ↑ Import CSV
+            </button>
+          </div>
         </div>
 
         {/* ── Filter Bar ── */}
