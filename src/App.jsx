@@ -7,6 +7,7 @@ import { PharmacyPanel } from './components/PharmacyPanel';
 import { POSTerminal } from './components/POSTerminal';
 import { SuperAdminPanel } from './components/SuperAdminPanel';
 import './App.css';
+import './styles/images.css';
 
 /* ─── Super Admin App Shell ─────────────────────────────── */
 function SuperAdminShell({ profile, signOut }) {

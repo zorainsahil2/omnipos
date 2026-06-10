@@ -12,6 +12,64 @@ const formatCurrency = (amount, currency) =>
 
 const nowISO = () => new Date().toISOString();
 
+/* ─── Lazy Loaded Image Component ──────────────────────── */
+const LazyImage = ({ src, alt, fallbackText }) => {
+  const [loadedSrc, setLoadedSrc] = useState(null);
+  const [error, setError] = useState(false);
+  const imgRef = useRef(null);
+
+  useEffect(() => {
+    if (!src) {
+      setError(true);
+      return;
+    }
+
+    let observer;
+    const currentImg = imgRef.current;
+
+    if (currentImg && 'IntersectionObserver' in window) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              setLoadedSrc(src);
+              observer.unobserve(currentImg);
+            }
+          });
+        },
+        { rootMargin: '50px' }
+      );
+      observer.observe(currentImg);
+    } else {
+      setLoadedSrc(src);
+    }
+
+    return () => {
+      if (observer && currentImg) {
+        observer.unobserve(currentImg);
+      }
+    };
+  }, [src]);
+
+  if (error || !loadedSrc) {
+    return (
+      <div ref={imgRef} className="billing-card-placeholder">
+        {fallbackText}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={loadedSrc}
+      alt={alt}
+      className="billing-card-img"
+      onError={() => setError(true)}
+      loading="lazy"
+    />
+  );
+};
+
 /* ─── Receipt Modal ────────────────────────────────────── */
 const ReceiptModal = ({ sale, tenant, onClose }) => {
   const handlePrint = () => window.print();
@@ -355,26 +413,34 @@ export const POSTerminal = () => {
                 return (
                   <div
                     key={prod.id}
-                    className={`product-card ${outOf ? 'out-of-stock' : ''}`}
+                    className={`billing-product-card ${outOf ? 'out-of-stock' : ''}`}
                     onClick={() => !outOf && addToCart(prod)}
                     title={outOf ? 'Out of stock' : `Add ${prod.name} to cart`}
                   >
-                    <span className={`badge ${prod.type === 'medical' ? 'badge-purple' : 'badge-blue'}`} style={{ alignSelf: 'flex-start', fontSize: '0.65rem' }}>
-                      {prod.type}
-                    </span>
-                    <div className="product-card-name">{prod.name}</div>
-                    {prod.generic_name && (
-                      <div className="product-card-sub">{prod.generic_name}</div>
-                    )}
-                    <div className="product-card-price">
-                      {formatCurrency(baseUnit?.price, tenant?.currency)} / {baseUnit?.unit_name}
-                    </div>
-                    <div className="product-card-stock">
-                      Stock: {outOf ? <span style={{ color: '#ef4444' }}>Out of stock</span> : `${stock.toFixed(2)} ${baseUnit?.unit_name || 'units'}`}
-                    </div>
                     {prod.prescription_required && (
-                      <span style={{ fontSize: '0.7rem', color: '#d8b4fe' }}>📋 Rx Required</span>
+                      <span className="billing-card-rx-badge">Rx</span>
                     )}
+                    <span className="billing-card-type-badge">{prod.type}</span>
+                    
+                    <div className="billing-card-img-container">
+                      <LazyImage
+                        src={prod.image_url}
+                        alt={prod.name}
+                        fallbackText="📦"
+                      />
+                    </div>
+
+                    <div className="billing-card-info">
+                      <h4 className="billing-card-name">{prod.name}</h4>
+                      <div className="billing-card-details-row">
+                        <span className="billing-card-price">
+                          {formatCurrency(baseUnit?.price, tenant?.currency)}
+                        </span>
+                        <span className={`billing-card-stock ${outOf ? 'out' : stock <= (prod.reorder_level || 10) ? 'low' : ''}`}>
+                          {stock.toFixed(stock % 1 === 0 ? 0 : 1)} {baseUnit?.unit_name || 'units'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 );
               })}

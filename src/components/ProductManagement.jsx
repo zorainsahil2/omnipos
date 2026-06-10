@@ -16,6 +16,7 @@ import { useDebounce } from '../hooks/useDebounce';
 import { useAuth } from '../context/AuthContext';
 import { EditProductModal } from './EditProductModal';
 import { ImportProductsModal } from './ImportProductsModal';
+import { ProductImageUploader } from './ProductImageUploader';
 import './Inventory.css';
 
 // ─── constants ──────────────────────────────────────────────────────────────
@@ -69,7 +70,7 @@ const StockBadge = ({ qty, reorderLevel = 10, unit = '' }) => {
 
 const SkeletonRow = () => (
   <tr className="pm-skeleton-row">
-    {[...Array(8)].map((_, i) => (
+    {[...Array(9)].map((_, i) => (
       <td key={i}><div className="pm-skeleton-cell" /></td>
     ))}
   </tr>
@@ -176,6 +177,11 @@ export const ProductManagement = () => {
   const [newUnitPrice, setNewUnitPrice]   = useState(0);
   const [formLoading, setFormLoading] = useState(false);
 
+  // ── Image states ──
+  const [addProductId, setAddProductId] = useState(() => crypto.randomUUID());
+  const [addImageUrl, setAddImageUrl]   = useState(null);
+  const [lightboxUrl, setLightboxUrl]   = useState(null);
+
   // ── Derived ──
   const activeFilterCount = countActiveFilters({ ...filters, search: debouncedSearch });
   const hasFilters = activeFilterCount > 0;
@@ -267,7 +273,7 @@ export const ProductManagement = () => {
     if (!name || !baseUnit) return;
     setFormLoading(true);
     try {
-      const productId = crypto.randomUUID();
+      const productId = addProductId;
       const productPayload = {
         id: productId, tenant_id: tenant.id, name,
         barcode: barcode || null,
@@ -278,6 +284,7 @@ export const ProductManagement = () => {
         generic_name:         type === 'medical' ? genericName    : null,
         manufacturer:         type === 'medical' ? manufacturer   : null,
         prescription_required: type === 'medical' ? prescriptionReq : false,
+        image_url:            addImageUrl,
       };
       const baseUnitPayload = {
         id: crypto.randomUUID(), product_id: productId,
@@ -304,6 +311,8 @@ export const ProductManagement = () => {
       setName(''); setBarcode(''); setSku(''); setBrand('');
       setGenericName(''); setManufacturer(''); setPrescReq(false);
       setBasePrice(0); setReorderLevel(10); setExtraUnits([]);
+      setAddImageUrl(null);
+      setAddProductId(crypto.randomUUID());
       await loadProducts();
       await loadFilterOptions();
       showToast('✅ Product added to catalog!');
@@ -474,6 +483,7 @@ export const ProductManagement = () => {
             <thead>
               <tr>
                 <th>#</th>
+                <th style={{ width: '50px' }}>Img</th>
                 <th>Product Name</th>
                 <th>SKU / Barcode</th>
                 <th>Type</th>
@@ -488,7 +498,7 @@ export const ProductManagement = () => {
                 [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan="8">
+                  <td colSpan="9">
                     <div className="pm-empty-state">
                       <div className="pm-empty-icon">🔍</div>
                       <div className="pm-empty-title">No products found</div>
@@ -518,6 +528,19 @@ export const ProductManagement = () => {
                   return (
                     <tr key={prod.id}>
                       <td style={{ color: '#475569', fontSize: '0.78rem' }}>{idx + 1}</td>
+                      <td>
+                        {prod.image_url ? (
+                          <img
+                            src={prod.image_url}
+                            alt={prod.name}
+                            className="product-thumb"
+                            loading="lazy"
+                            onClick={() => setLightboxUrl(prod.image_url)}
+                          />
+                        ) : (
+                          <div className="product-thumb-placeholder">📦</div>
+                        )}
+                      </td>
                       <td>
                         <div style={{ fontWeight: 700, color: '#f1f5f9' }}>
                           <Highlight text={prod.name} search={debouncedSearch} />
@@ -603,11 +626,21 @@ export const ProductManagement = () => {
         <h3 className="card-title">➕ Add New Product</h3>
         <form className="compact-form" onSubmit={handleCreateProduct}>
 
-          {/* Name */}
-          <div className="form-group-sm">
-            <label>Product Name *</label>
-            <input type="text" placeholder="e.g. Sugar, Paracetamol 500mg"
-              value={name} onChange={e => setName(e.target.value)} required />
+          <div className="form-row" style={{ gridTemplateColumns: 'auto 1fr', gap: '20px', alignItems: 'start' }}>
+            <ProductImageUploader
+              productId={addProductId}
+              currentImageUrl={addImageUrl}
+              onImageChange={setAddImageUrl}
+              tenantId={tenant?.id}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, width: '100%' }}>
+              {/* Name */}
+              <div className="form-group-sm" style={{ margin: 0 }}>
+                <label>Product Name *</label>
+                <input type="text" placeholder="e.g. Sugar, Paracetamol 500mg"
+                  value={name} onChange={e => setName(e.target.value)} required />
+              </div>
+            </div>
           </div>
 
           {/* SKU + Barcode */}
@@ -726,6 +759,19 @@ export const ProductManagement = () => {
           </button>
         </form>
       </div>
+
+      {/* Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="lightbox-overlay"
+          onClick={() => setLightboxUrl(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <img src={lightboxUrl} alt="Product large preview" className="lightbox-img" />
+          <button className="lightbox-close" onClick={() => setLightboxUrl(null)}>✕</button>
+        </div>
+      )}
     </div>
   );
 };

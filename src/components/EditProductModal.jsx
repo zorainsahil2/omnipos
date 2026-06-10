@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { updateProduct } from '../lib/productsApi';
 import { useAuth } from '../context/AuthContext';
+import { ProductImageUploader } from './ProductImageUploader';
 import './EditProductModal.css';
 
 /**
@@ -19,6 +20,7 @@ export const EditProductModal = ({ product, onClose, onSaved }) => {
   const [genericName, setGenericName]     = useState(product.generic_name || '');
   const [manufacturer, setManufacturer]   = useState(product.manufacturer || '');
   const [prescriptionReq, setPrescReq]    = useState(product.prescription_required || false);
+  const [imageUrl, setImageUrl]           = useState(product.image_url || null);
 
   const [saving, setSaving]   = useState(false);
   const [formError, setFormError] = useState('');
@@ -53,6 +55,7 @@ export const EditProductModal = ({ product, onClose, onSaved }) => {
       const fields = {
         name: name.trim(),
         barcode: barcode.trim() || null,
+        image_url: imageUrl,
         ...(product.type === 'medical' && {
           generic_name: genericName.trim() || null,
           manufacturer: manufacturer.trim() || null,
@@ -93,31 +96,42 @@ export const EditProductModal = ({ product, onClose, onSaved }) => {
 
         <form className="epm-form" onSubmit={handleSave} noValidate>
 
-          {/* Product Name */}
-          <div className="epm-field">
-            <label htmlFor="epm-name">Product Name *</label>
-            <input
-              id="epm-name"
-              ref={firstInputRef}
-              type="text"
-              className="epm-input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Sugar, Paracetamol"
+          <div className="epm-top-row">
+            <ProductImageUploader
+              productId={product.id}
+              currentImageUrl={imageUrl}
+              onImageChange={setImageUrl}
+              tenantId={tenant?.id}
             />
-          </div>
 
-          {/* Barcode */}
-          <div className="epm-field">
-            <label htmlFor="epm-barcode">Barcode / SKU</label>
-            <input
-              id="epm-barcode"
-              type="text"
-              className="epm-input"
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
-              placeholder="Optional"
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, width: '100%' }}>
+              {/* Product Name */}
+              <div className="epm-field">
+                <label htmlFor="epm-name">Product Name *</label>
+                <input
+                  id="epm-name"
+                  ref={firstInputRef}
+                  type="text"
+                  className="epm-input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Sugar, Paracetamol"
+                />
+              </div>
+
+              {/* Barcode */}
+              <div className="epm-field">
+                <label htmlFor="epm-barcode">Barcode / SKU</label>
+                <input
+                  id="epm-barcode"
+                  type="text"
+                  className="epm-input"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  placeholder="Optional"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Medical-only fields */}
