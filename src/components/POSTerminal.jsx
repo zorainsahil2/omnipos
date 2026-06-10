@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import { localDb, db, getSalesQueueCount } from '../db/localDb';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -8,6 +8,11 @@ import { CategorySidebar } from './billing/CategorySidebar';
 import { ProductGrid } from './billing/ProductGrid';
 import { useBillingProducts } from '../hooks/useBillingProducts';
 import { useProductCountByCategory } from '../hooks/useProductCountByCategory';
+import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
+import { findProductByBarcode } from '../lib/barcodeApi';
+import { playBeep } from '../lib/beepSounds';
+import { ScanFeedback } from './billing/ScanFeedback';
+import { ScannerSettings } from './billing/ScannerSettings';
 import './POS.css';
 
 /* ─── Utility ─────────────────────────────────────────── */
@@ -120,6 +125,21 @@ export const POSTerminal = () => {
   );
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // ── Barcode Scanner states ──
+  const [scannerEnabled, setScannerEnabled] = useState(
+    () => localStorage.getItem('scanner_enabled') !== 'false'
+  );
+  const [scannerTimeGap, setScannerTimeGap] = useState(
+    () => parseInt(localStorage.getItem('scanner_time_gap') || '50')
+  );
+  const [scannerMinLength, setScannerMinLength] = useState(
+    () => parseInt(localStorage.getItem('scanner_min_length') || '3')
+  );
+  const [testMode, setTestMode] = useState(false);
+  const [lastTestScan, setLastTestScan] = useState(null);
+  const [scanFeedback, setScanFeedback] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+
   // Hooks for fetching/filtering and badges
   const { products: filteredProducts, loading: loadingFiltered } = useBillingProducts(selectedCategory, searchQuery, refreshKey);
   const productCountByCategory = useProductCountByCategory(refreshKey);
@@ -198,6 +218,123 @@ export const POSTerminal = () => {
     });
   };
 
+  /* ── Add product to cart ── */
+  const addToCart = useCallback((product) => {
+    const baseUnit = product.product_units?.find(u => u.is_base_unit);
+    if (!baseUnit) return;
+
+    setCart(prevCart => {
+      const existingIdx = prevCart.findIndex(
+        c => c.product.id === product.id && c.unit.id === baseUnit.id
+      );
+
+      if (existingIdx >= 0) {
+        const updated = [...prevCart];
+        updated[existingIdx].qty += 1;
+        return updated;
+      } else {
+        // Find cheapest/first available batch (FIFO)
+        const productBatches = batches.filter(b => b.product_id === product.id && b.quantity > 0);
+        const batch = productBatches.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
+
+        return [...prevCart, {
+          product,
+          unit: baseUnit,
+          qty: 1,
+          batchId: batch?.id || null,
+          unitPrice: baseUnit.price,
+          costPrice: batch?.purchase_cost || 0,
+        }];
+      }
+    });
+  }, [batches]);
+
+  const handleToggleEnabled = (val) => {
+    setScannerEnabled(val);
+    localStorage.setItem('scanner_enabled', String(val));
+  };
+
+  const handleTimeGapChange = (val) => {
+    setScannerTimeGap(val);
+    localStorage.setItem('scanner_time_gap', String(val));
+  };
+
+  const handleMinLengthChange = (val) => {
+    setScannerMinLength(val);
+    localStorage.setItem('scanner_min_length', String(val));
+  };
+
+  const handleBarcodeScan = useCallback(async (barcode) => {
+    setScanFeedback({ type: 'scanning', message: `Scanning: ${barcode}` });
+
+    const { product } = await findProductByBarcode(barcode);
+
+    if (testMode) {
+      setLastTestScan({ barcode, found: !!product, name: product?.name });
+      setScanFeedback(null);
+      if (product) playBeep('success');
+      else playBeep('error');
+      return;
+    }
+
+    if (!product) {
+      setScanFeedback({ type: 'error', message: `Product not found: ${barcode}` });
+      playBeep('error');
+      setTimeout(() => setScanFeedback(prev => prev?.message.includes(barcode) ? null : prev), 3000);
+      return;
+    }
+
+    const stock = stockMap[product.id] || 0;
+    if (stock <= 0) {
+      setScanFeedback({ type: 'warning', message: `${product.name} — Out of stock` });
+      playBeep('warning');
+      setTimeout(() => setScanFeedback(prev => prev?.product?.id === product.id ? null : prev), 3000);
+      return;
+    }
+
+    addToCart(product);
+    setScanFeedback({ type: 'success', message: `${product.name} added`, product });
+    playBeep('success');
+    setTimeout(() => setScanFeedback(prev => prev?.product?.id === product.id ? null : prev), 1500);
+  }, [addToCart, testMode, stockMap]);
+
+  useBarcodeScanner(handleBarcodeScan, {
+    enabled: scannerEnabled,
+    timeGap: scannerTimeGap,
+    minLength: scannerMinLength,
+  });
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      const barcode = searchQuery.trim();
+      setScanFeedback({ type: 'scanning', message: `Lookup: ${barcode}` });
+      findProductByBarcode(barcode).then(({ product }) => {
+        if (product) {
+          const stock = stockMap[product.id] || 0;
+          if (stock <= 0) {
+            setScanFeedback({ type: 'warning', message: `${product.name} — Out of stock` });
+            playBeep('warning');
+            setTimeout(() => setScanFeedback(prev => prev?.product?.id === product.id ? null : prev), 3000);
+          } else {
+            addToCart(product);
+            setSearch('');
+            setScanFeedback({ type: 'success', message: `${product.name} added`, product });
+            playBeep('success');
+            setTimeout(() => setScanFeedback(prev => prev?.product?.id === product.id ? null : prev), 1500);
+          }
+        } else {
+          setScanFeedback({ type: 'error', message: `Product not found: ${barcode}` });
+          playBeep('error');
+          setTimeout(() => setScanFeedback(prev => prev?.message.includes(barcode) ? null : prev), 3000);
+        }
+      }).catch(err => {
+        setScanFeedback({ type: 'error', message: `Error: ${err.message}` });
+        playBeep('error');
+        setTimeout(() => setScanFeedback(null), 3000);
+      });
+    }
+  };
+
   const handleToggleFavourite = async (productId, newValue) => {
     // Optimistic local IndexedDB update
     try {
@@ -225,34 +362,7 @@ export const POSTerminal = () => {
     }
   };
 
-  /* ── Add product to cart ── */
-  const addToCart = (product) => {
-    const baseUnit = product.product_units?.find(u => u.is_base_unit);
-    if (!baseUnit) return;
 
-    const existingIdx = cart.findIndex(
-      c => c.product.id === product.id && c.unit.id === baseUnit.id
-    );
-
-    if (existingIdx >= 0) {
-      const updated = [...cart];
-      updated[existingIdx].qty += 1;
-      setCart(updated);
-    } else {
-      // Find cheapest/first available batch (FIFO)
-      const productBatches = batches.filter(b => b.product_id === product.id && b.quantity > 0);
-      const batch = productBatches.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
-
-      setCart([...cart, {
-        product,
-        unit: baseUnit,
-        qty: 1,
-        batchId: batch?.id || null,
-        unitPrice: baseUnit.price,
-        costPrice: batch?.purchase_cost || 0,
-      }]);
-    }
-  };
 
   /* ── Cart manipulation ── */
   const updateQty = (idx, delta) => {
@@ -376,6 +486,17 @@ export const POSTerminal = () => {
           {queueCount > 0 && (
             <span className="queue-badge">📤 {queueCount} offline sale{queueCount > 1 ? 's' : ''} pending sync</span>
           )}
+          
+          {/* Scanner Indicator Dot */}
+          <div
+            className="scanner-indicator"
+            onClick={() => setShowSettings(true)}
+            title="Configure Barcode Scanner Settings"
+          >
+            <span className={`scanner-dot ${scanFeedback ? scanFeedback.type : scannerEnabled ? 'success' : 'idle'}`}></span>
+            <span>Scanner: {scannerEnabled ? 'ON' : 'OFF'}</span>
+          </div>
+
           {isOnline
             ? <span className="online-pill">🟢 Online</span>
             : <span className="offline-pill">🟡 Offline Mode — bills saved locally</span>
@@ -405,6 +526,7 @@ export const POSTerminal = () => {
               placeholder="Search products (Press '/' or F2 to focus)..."
               value={searchQuery}
               onChange={e => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
             />
             {searchQuery && (
               <button
@@ -565,6 +687,28 @@ export const POSTerminal = () => {
           sale={receipt}
           tenant={tenant}
           onClose={() => setReceipt(null)}
+        />
+      )}
+
+      {/* Scan Feedback overlay */}
+      <ScanFeedback feedback={scanFeedback} formatCurrency={amt => formatCurrency(amt, tenant?.currency)} />
+
+      {/* Scanner Settings modal overlay */}
+      {showSettings && (
+        <ScannerSettings
+          enabled={scannerEnabled}
+          onToggleEnabled={handleToggleEnabled}
+          timeGap={scannerTimeGap}
+          onTimeGapChange={handleTimeGapChange}
+          minLength={scannerMinLength}
+          onMinLengthChange={handleMinLengthChange}
+          testMode={testMode}
+          onToggleTestMode={setTestMode}
+          lastTestScan={lastTestScan}
+          onClose={() => {
+            setShowSettings(false);
+            setLastTestScan(null);
+          }}
         />
       )}
     </div>

@@ -9,6 +9,7 @@ import { SuperAdminPanel } from './components/SuperAdminPanel';
 import './App.css';
 import './styles/images.css';
 import './styles/billing-layout.css';
+import './styles/scanner.css';
 
 /* ─── Super Admin App Shell ─────────────────────────────── */
 function SuperAdminShell({ profile, signOut }) {
