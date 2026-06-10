@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './components/Login';
 import { ProductManagement } from './components/ProductManagement';
@@ -8,6 +8,7 @@ import { POSTerminal } from './components/POSTerminal';
 import { SuperAdminPanel } from './components/SuperAdminPanel';
 import './App.css';
 import './styles/images.css';
+import './styles/billing-layout.css';
 
 /* ─── Super Admin App Shell ─────────────────────────────── */
 function SuperAdminShell({ profile, signOut }) {
@@ -34,7 +35,7 @@ function SuperAdminShell({ profile, signOut }) {
 }
 
 /* ─── Tenant (Shopkeeper) App Shell ─────────────────────── */
-function TenantShell({ user, profile, tenant, signOut }) {
+function TenantShell({ profile, tenant, signOut }) {
   const [activeTab, setActiveTab] = useState('billing');
   const isSubscribed = tenant?.subscription_status === 'active';
   // store_type is set by Super Admin — always read from tenant record

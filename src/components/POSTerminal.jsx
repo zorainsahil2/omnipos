@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { localDb, getSalesQueueCount } from '../db/localDb';
+import { localDb, db, getSalesQueueCount } from '../db/localDb';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useSyncQueue } from '../hooks/useSyncQueue';
 import { useAuth } from '../context/AuthContext';
+import { CategorySidebar } from './billing/CategorySidebar';
+import { ProductGrid } from './billing/ProductGrid';
+import { useBillingProducts } from '../hooks/useBillingProducts';
+import { useProductCountByCategory } from '../hooks/useProductCountByCategory';
 import './POS.css';
 
 /* ─── Utility ─────────────────────────────────────────── */
@@ -11,64 +15,6 @@ const formatCurrency = (amount, currency) =>
   `${currency || ''} ${Number(amount || 0).toFixed(2)}`;
 
 const nowISO = () => new Date().toISOString();
-
-/* ─── Lazy Loaded Image Component ──────────────────────── */
-const LazyImage = ({ src, alt, fallbackText }) => {
-  const [loadedSrc, setLoadedSrc] = useState(null);
-  const [error, setError] = useState(false);
-  const imgRef = useRef(null);
-
-  useEffect(() => {
-    if (!src) {
-      setError(true);
-      return;
-    }
-
-    let observer;
-    const currentImg = imgRef.current;
-
-    if (currentImg && 'IntersectionObserver' in window) {
-      observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              setLoadedSrc(src);
-              observer.unobserve(currentImg);
-            }
-          });
-        },
-        { rootMargin: '50px' }
-      );
-      observer.observe(currentImg);
-    } else {
-      setLoadedSrc(src);
-    }
-
-    return () => {
-      if (observer && currentImg) {
-        observer.unobserve(currentImg);
-      }
-    };
-  }, [src]);
-
-  if (error || !loadedSrc) {
-    return (
-      <div ref={imgRef} className="billing-card-placeholder">
-        {fallbackText}
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={loadedSrc}
-      alt={alt}
-      className="billing-card-img"
-      onError={() => setError(true)}
-      loading="lazy"
-    />
-  );
-};
 
 /* ─── Receipt Modal ────────────────────────────────────── */
 const ReceiptModal = ({ sale, tenant, onClose }) => {
@@ -151,7 +97,6 @@ export const POSTerminal = () => {
   useSyncQueue(); // Auto-flush offline queue on reconnect
 
   // Product/inventory state
-  const [products, setProducts]   = useState([]);
   const [batches, setBatches]     = useState([]);
   const [searchQuery, setSearch]  = useState('');
   const [loadingData, setLoading] = useState(false);
@@ -168,6 +113,17 @@ export const POSTerminal = () => {
   const [queueCount, setQueueCount]   = useState(0);
   const searchRef = useRef(null);
 
+  // ── Category Sidebar & Favourites states ──
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem('sidebar_collapsed') === 'true'
+  );
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Hooks for fetching/filtering and badges
+  const { products: filteredProducts, loading: loadingFiltered } = useBillingProducts(selectedCategory, searchQuery, refreshKey);
+  const productCountByCategory = useProductCountByCategory(refreshKey);
+
   /* ── Load products + batches ── */
   const loadInventory = async () => {
     setLoading(true);
@@ -175,7 +131,6 @@ export const POSTerminal = () => {
       if (isOnline) {
         const { data: prods }   = await supabase.from('products').select('*, product_units(*)');
         const { data: batchArr} = await supabase.from('inventory_batches').select('*');
-        setProducts(prods   || []);
         setBatches(batchArr || []);
 
         // Sync to local
@@ -189,26 +144,37 @@ export const POSTerminal = () => {
         }
         if (batchArr?.length) await localDb.inventoryBatches.bulkPut(batchArr);
       } else {
-        const localProds = await localDb.products.toArray();
-        const enriched = [];
-        for (const p of localProds) {
-          const units = await localDb.productUnits.where('product_id').equals(p.id).toArray();
-          enriched.push({ ...p, product_units: units });
-        }
-        setProducts(enriched);
         setBatches(await localDb.inventoryBatches.toArray());
       }
     } catch (err) {
       console.error('POS load error:', err.message);
     } finally {
       setLoading(false);
+      setRefreshKey(prev => prev + 1);
     }
   };
 
   const refreshQueue = async () => setQueueCount(await getSalesQueueCount());
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (tenant?.id) { loadInventory(); refreshQueue(); } }, [tenant, isOnline]);
   useEffect(() => { searchRef.current?.focus(); }, []);
+
+  // Keyboard shortcut: '/' or 'F2' focuses search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (
+        (e.key === '/' || e.key === 'F2') &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA'
+      ) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   /* ── Available stock per product ── */
   const stockMap = useMemo(() => {
@@ -219,15 +185,45 @@ export const POSTerminal = () => {
     return map;
   }, [batches]);
 
-  /* ── Filtered products ── */
-  const filteredProducts = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return products.filter(p =>
-      p.name?.toLowerCase().includes(q) ||
-      p.barcode?.toLowerCase().includes(q) ||
-      p.generic_name?.toLowerCase().includes(q)
-    );
-  }, [products, searchQuery]);
+  const handleCategorySelect = (catName) => {
+    setSelectedCategory(catName);
+    setSearch(''); // Clear search on category change
+  };
+
+  const handleToggleCollapse = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
+  const handleToggleFavourite = async (productId, newValue) => {
+    // Optimistic local IndexedDB update
+    try {
+      await db.products.update(productId, { is_favourite: newValue });
+      setRefreshKey(prev => prev + 1); // update UI counts/lists instantly
+    } catch (err) {
+      console.warn('[handleToggleFavourite] Dexie update failed:', err.message);
+    }
+
+    if (isOnline) {
+      // Remote DB update in background
+      supabase
+        .from('products')
+        .update({ is_favourite: newValue })
+        .eq('id', productId)
+        .then(({ error }) => {
+          if (error) {
+            console.error('[handleToggleFavourite] Supabase update failed, reverting:', error.message);
+            // Revert local state
+            db.products.update(productId, { is_favourite: !newValue }).then(() => {
+              setRefreshKey(prev => prev + 1);
+            });
+          }
+        });
+    }
+  };
 
   /* ── Add product to cart ── */
   const addToCart = (product) => {
@@ -317,7 +313,7 @@ export const POSTerminal = () => {
       if (isOnline) {
         // Save directly to Supabase
         await supabase.from('sales').insert(salePayload);
-        await supabase.from('sale_items').insert(saleItems.map(({ product_name, unit_name, ...si }) => si));
+        await supabase.from('sale_items').insert(saleItems.map(({ product_name: _, unit_name: __, ...si }) => si));
 
         // Deduct stock per batch in Supabase
         for (const c of cart) {
@@ -387,8 +383,18 @@ export const POSTerminal = () => {
         </div>
       </div>
 
-      <div className="pos-layout">
-        {/* ─── Left: Product Search ─── */}
+      <div className={`pos-layout ${sidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}>
+        
+        {/* Category Sidebar */}
+        <CategorySidebar
+          selectedCategory={selectedCategory}
+          onCategorySelect={handleCategorySelect}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={handleToggleCollapse}
+          productCountByCategory={productCountByCategory}
+        />
+
+        {/* ─── Center: Product Search & Grid ─── */}
         <div className="pos-search-panel">
           <div className="pos-search-bar">
             <span className="pos-search-icon">🔍</span>
@@ -396,61 +402,30 @@ export const POSTerminal = () => {
               ref={searchRef}
               className="pos-search-input"
               type="text"
-              placeholder="Search products by name, barcode or generic formula..."
+              placeholder="Search products (Press '/' or F2 to focus)..."
               value={searchQuery}
               onChange={e => setSearch(e.target.value)}
             />
+            {searchQuery && (
+              <button
+                type="button"
+                className="pos-search-clear"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
-          {loadingData ? (
-            <p style={{ color: '#475569', padding: '20px 0' }}>Loading inventory...</p>
-          ) : (
-            <div className="product-grid">
-              {filteredProducts.map(prod => {
-                const baseUnit = prod.product_units?.find(u => u.is_base_unit);
-                const stock    = stockMap[prod.id] || 0;
-                const outOf    = stock <= 0;
-                return (
-                  <div
-                    key={prod.id}
-                    className={`billing-product-card ${outOf ? 'out-of-stock' : ''}`}
-                    onClick={() => !outOf && addToCart(prod)}
-                    title={outOf ? 'Out of stock' : `Add ${prod.name} to cart`}
-                  >
-                    {prod.prescription_required && (
-                      <span className="billing-card-rx-badge">Rx</span>
-                    )}
-                    <span className="billing-card-type-badge">{prod.type}</span>
-                    
-                    <div className="billing-card-img-container">
-                      <LazyImage
-                        src={prod.image_url}
-                        alt={prod.name}
-                        fallbackText="📦"
-                      />
-                    </div>
-
-                    <div className="billing-card-info">
-                      <h4 className="billing-card-name">{prod.name}</h4>
-                      <div className="billing-card-details-row">
-                        <span className="billing-card-price">
-                          {formatCurrency(baseUnit?.price, tenant?.currency)}
-                        </span>
-                        <span className={`billing-card-stock ${outOf ? 'out' : stock <= (prod.reorder_level || 10) ? 'low' : ''}`}>
-                          {stock.toFixed(stock % 1 === 0 ? 0 : 1)} {baseUnit?.unit_name || 'units'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {filteredProducts.length === 0 && (
-                <p style={{ color: '#475569', gridColumn: '1/-1', padding: '20px 0' }}>
-                  No products found. Add products from the Product Catalog tab first.
-                </p>
-              )}
-            </div>
-          )}
+          <ProductGrid
+            products={filteredProducts}
+            stockMap={stockMap}
+            onAddToCart={addToCart}
+            onToggleFavourite={handleToggleFavourite}
+            formatCurrency={(amount) => formatCurrency(amount, tenant?.currency)}
+            loading={loadingFiltered || loadingData}
+          />
         </div>
 
         {/* ─── Right: Cart ─── */}

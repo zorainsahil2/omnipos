@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { updateProduct } from '../lib/productsApi';
 import { useAuth } from '../context/AuthContext';
 import { ProductImageUploader } from './ProductImageUploader';
@@ -21,6 +21,7 @@ export const EditProductModal = ({ product, onClose, onSaved }) => {
   const [manufacturer, setManufacturer]   = useState(product.manufacturer || '');
   const [prescriptionReq, setPrescReq]    = useState(product.prescription_required || false);
   const [imageUrl, setImageUrl]           = useState(product.image_url || null);
+  const [category, setCategory]           = useState(product.category || (product.type === 'medical' ? 'Medical' : 'Grocery'));
 
   const [saving, setSaving]   = useState(false);
   const [formError, setFormError] = useState('');
@@ -56,6 +57,7 @@ export const EditProductModal = ({ product, onClose, onSaved }) => {
         name: name.trim(),
         barcode: barcode.trim() || null,
         image_url: imageUrl,
+        category: category,
         ...(product.type === 'medical' && {
           generic_name: genericName.trim() || null,
           manufacturer: manufacturer.trim() || null,
@@ -130,6 +132,25 @@ export const EditProductModal = ({ product, onClose, onSaved }) => {
                   onChange={(e) => setBarcode(e.target.value)}
                   placeholder="Optional"
                 />
+              </div>
+
+              {/* Category */}
+              <div className="epm-field">
+                <label htmlFor="epm-category">Category *</label>
+                <select
+                  id="epm-category"
+                  className="epm-input"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  style={{ background: 'rgba(30, 41, 59, 0.8)', color: '#f8fafc' }}
+                >
+                  <option value="Grocery">Grocery</option>
+                  <option value="Medical">Medical</option>
+                  <option value="Bakery">Bakery</option>
+                  <option value="Dairy">Dairy</option>
+                  <option value="Drinks">Drinks</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
             </div>
           </div>

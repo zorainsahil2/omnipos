@@ -165,6 +165,7 @@ export const ProductManagement = () => {
   const [sku, setSku]                 = useState('');
   const [brand, setBrand]             = useState('');
   const [type, setType]               = useState('grocery');
+  const [category, setCategory]       = useState('Grocery');
   const [genericName, setGenericName] = useState('');
   const [manufacturer, setManufacturer] = useState('');
   const [prescriptionReq, setPrescReq]  = useState(false);
@@ -235,6 +236,7 @@ export const ProductManagement = () => {
       const isMedical = tenant.store_type === 'medical';
       setType(isMedical ? 'medical' : 'grocery');
       setBaseUnit(isMedical ? 'Tablet' : 'Kg');
+      setCategory(isMedical ? 'Medical' : 'Grocery');
     }
   }, [tenant]);
 
@@ -285,6 +287,7 @@ export const ProductManagement = () => {
         manufacturer:         type === 'medical' ? manufacturer   : null,
         prescription_required: type === 'medical' ? prescriptionReq : false,
         image_url:            addImageUrl,
+        category:             category,
       };
       const baseUnitPayload = {
         id: crypto.randomUUID(), product_id: productId,
@@ -313,6 +316,7 @@ export const ProductManagement = () => {
       setBasePrice(0); setReorderLevel(10); setExtraUnits([]);
       setAddImageUrl(null);
       setAddProductId(crypto.randomUUID());
+      setCategory(type === 'medical' ? 'Medical' : 'Grocery');
       await loadProducts();
       await loadFilterOptions();
       showToast('✅ Product added to catalog!');
@@ -657,8 +661,8 @@ export const ProductManagement = () => {
             </div>
           </div>
 
-          {/* Brand + Type */}
-          <div className="form-row">
+          {/* Brand + Type + Category */}
+          <div className="form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
             <div className="form-group-sm">
               <label>Brand</label>
               <input type="text" placeholder="e.g. Nestle, GSK"
@@ -666,9 +670,24 @@ export const ProductManagement = () => {
             </div>
             <div className="form-group-sm">
               <label>Product Type</label>
-              <select value={type} onChange={e => setType(e.target.value)}>
+              <select value={type} onChange={e => {
+                setType(e.target.value);
+                if (e.target.value === 'medical') setCategory('Medical');
+                else if (e.target.value === 'grocery' && category === 'Medical') setCategory('Grocery');
+              }}>
                 <option value="grocery">Grocery Item</option>
                 <option value="medical">Medical / Medicine</option>
+              </select>
+            </div>
+            <div className="form-group-sm">
+              <label>Category *</label>
+              <select value={category} onChange={e => setCategory(e.target.value)}>
+                <option value="Grocery">Grocery</option>
+                <option value="Medical">Medical</option>
+                <option value="Bakery">Bakery</option>
+                <option value="Dairy">Dairy</option>
+                <option value="Drinks">Drinks</option>
+                <option value="Other">Other</option>
               </select>
             </div>
           </div>

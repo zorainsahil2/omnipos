@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { seedDefaultCategories } from '../lib/categorySeed';
 
 const AuthContext = createContext({});
 
@@ -33,6 +34,9 @@ export const AuthProvider = ({ children }) => {
 
         if (tenantError) throw tenantError;
         setTenant(tenantData);
+        
+        // Seed default categories for this tenant in IndexedDB/Supabase
+        await seedDefaultCategories(profileData.tenant_id);
       }
     } catch (err) {
       console.error('Error fetching profile or tenant details:', err.message);
